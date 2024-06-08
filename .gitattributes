@@ -1,0 +1,18 @@
+# Nastavení konců řádků pro textové soubory
+* text eol=lf
+
+# Ochrana obrázků a binárních souborů před změnami
+*.jpg binary
+*.jpeg binary
+*.png binary
+*.gif binary
+*.bmp binary
+*.pdf binary
+*.doc binary
+*.docx binary
+*.xls binary
+*.xlsx binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.rar binary
