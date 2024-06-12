@@ -1,80 +1,78 @@
 #include <Arduino.h>
 #include <DFRobotDFPlayerMini.h>
 
-#if (defined(ARDUINO_AVR_UNO) || defined(ESP8266))  // Using a soft serial port
+#if (defined(ARDUINO_AVR_UNO) || defined(ESP8266))  // Using a software serial port
 #include <SoftwareSerial.h>
-SoftwareSerial softSerial(/*rx =*/4, /*tx =*/5);
+SoftwareSerial softSerial(4, 5);  // RX, TX pins
 #define FPSerial softSerial
 #else
-#define FPSerial Serial1
+#define FPSerial Serial1  // Use hardware serial if not AVR UNO or ESP8266
 #endif
 
 DFRobotDFPlayerMini myDFPlayer;
 void printDetail(uint8_t type, int value);
 
-// pins
+// Pins
 #define RX 16
 #define TX 17
-#define interruptPin 4
+#define INTERRUPT_PIN 4
 
-// settings/constants
-const unsigned long debounceTime = 200;  // Ignore next interupt for short time [ms]
-const unsigned long switchOffTime = 60 * 1000; // ask for swithitchin off after a time [ms]
-const int readySoundId = 0;
-const int switchOfSoundId = 121; 
-// language {'cs': 0, 'en': 1, 'de': 2,  'fr': 3, 'es': 4}
-const int lang_id = 1; 
+// Settings/Constants
+const unsigned long DEBOUNCE_TIME = 200;  // Ignore subsequent interrupts within this time frame [ms]
+const unsigned long SWITCH_OFF_TIME = 60 * 1000; // Time before suggesting switch off [ms]
+const int READY_SOUND_ID = 0;
+const int SWITCH_OFF_SOUND_ID = 121;
+// Languages {'cs': 0, 'en': 1, 'de': 2,  'fr': 3, 'es': 4}
+const int LANG_ID = 1;
 
-// variables
-long int count = 0;
-long int lastCount = 0;
-unsigned long lastInterruptTime = 0;     // storege for time of last interup (drop)
+// Variables
+volatile long count = 0;
+long lastCount = 0;
+unsigned long lastInterruptTime = 0;  // Storage for the time of the last interrupt (drop)
 
-void setup_serial(void) {
+void setup_serial() {
   Serial.begin(115200);
   while (!Serial) {
-    // some boards need to wait to ensure access to serial over USB
+    // Wait for serial port to connect. Needed for some boards.
   }
 }
 
-void setup_player(void) {
-#if (defined ESP32)
+void setup_player() {
+#if defined(ESP32)
   FPSerial.begin(9600, SERIAL_8N1, RX, TX);
 #else
   FPSerial.begin(9600);
 #endif
 
   Serial.println(F("Initializing DFPlayer ... (May take 3~5 seconds)"));
-  if (!myDFPlayer.begin(FPSerial, /*isACK = */ true, /*doReset = */ true)) {  //Use serial to communicate with mp3.
+  if (!myDFPlayer.begin(FPSerial, /*isACK = */ true, /*doReset = */ true)) {  // Use serial to communicate with MP3 player.
     Serial.println(F("Unable to begin:"));
     Serial.println(F("1.Please recheck the connection!"));
     Serial.println(F("2.Please insert the SD card!"));
     while (true) {
-      delay(0);  // Code to compatible with ESP8266 watch dog.
+      delay(0);  // Code to handle ESP8266 watch dog.
     }
   }
   Serial.println(F("DFPlayer Mini online."));
 
-  myDFPlayer.volume(25);  //Set volume value. From 0 to 30
+  myDFPlayer.volume(25);  // Set volume value. From 0 to 30
   myDFPlayer.EQ(DFPLAYER_EQ_NORMAL);
-
 }
 
-void setup_interupt() {
-  // interupt
-  pinMode(interruptPin, INPUT_PULLUP);                                            // set as input with pull-up rezistor
-  attachInterrupt(digitalPinToInterrupt(interruptPin), handleInterrupt, CHANGE);  // connet interupt rutine
+void setup_interrupt() {
+  pinMode(INTERRUPT_PIN, INPUT_PULLUP);  // Set as input with pull-up resistor
+  attachInterrupt(digitalPinToInterrupt(INTERRUPT_PIN), handleInterrupt, CHANGE);  // Connect interrupt routine
 }
 
 void handleInterrupt() {
   unsigned long currentTime = millis();
-  if (currentTime - lastInterruptTime > debounceTime) {
+  if (currentTime - lastInterruptTime > DEBOUNCE_TIME) {
     count++;
-    lastInterruptTime = currentTime; 
+    lastInterruptTime = currentTime;
   }
 }
 
-void playSound(short int langId, short int soundId, bool debug = true) {
+void playSound(short langId, short soundId, bool debug = true) {
   myDFPlayer.playLargeFolder(langId, soundId);
 
   if (debug) {
@@ -84,7 +82,7 @@ void playSound(short int langId, short int soundId, bool debug = true) {
       Serial.print(F(", sound:"));
       Serial.print(soundId);
       Serial.print(F(", status:"));
-      printDetail(myDFPlayer.readType(), myDFPlayer.read()); //Print the detail message from DFPlayer to handle different errors and states.
+      printDetail(myDFPlayer.readType(), myDFPlayer.read()); // Print the detail message from DFPlayer to handle different errors and states.
     }
   }
 }
@@ -153,13 +151,10 @@ void printDetail(uint8_t type, int value) {
 void setup() {
   setup_serial();
   setup_player();
-  delay(600);
-  playSound(lang_id, readySoundId);  // ready
-  delay(300);
-  lastInterruptTime  = millis();
-  setup_interupt();  
+  setup_interrupt();
+  playSound(LANG_ID, READY_SOUND_ID);  // Play ready sound
+  lastInterruptTime = millis();
 }
-
 
 void loop() {
   noInterrupts();
@@ -167,8 +162,7 @@ void loop() {
   interrupts();
 
   if (lastCount != countCopy) {
-    playSound(lang_id, countCopy);
-
+    playSound(LANG_ID, countCopy);
     // if (myDFPlayer.available()) {
     //   printDetail(myDFPlayer.readType(), myDFPlayer.read());  //Print the detail message from DFPlayer to handle different errors and states.
     // }
@@ -176,12 +170,13 @@ void loop() {
     delay(50);
     lastCount = countCopy;
   }
+
   long currentTime = millis();
-  if (currentTime - lastInterruptTime > switchOffTime) { 
+  if (currentTime - lastInterruptTime > SWITCH_OFF_TIME) {
     lastInterruptTime = currentTime;
     Serial.print(F("last count:")); Serial.println(countCopy);
-    delay(1000); 
-    playSound(lang_id, switchOfSoundId);
-    delay(1000); 
+    delay(1000);
+    playSound(LANG_ID, SWITCH_OFF_SOUND_ID);
+    delay(1000);
   }
 }
